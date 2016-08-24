@@ -10,6 +10,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"io/ioutil"
+	"encoding/xml"
 )
 
 var (
@@ -17,8 +19,38 @@ var (
 	mailFromRE = regexp.MustCompile(`[Ff][Rr][Oo][Mm]:<(.*)>`) // Delivery Status Notifications are sent with "MAIL FROM:<>"
 )
 
+func configXmlReader() []byte{
+	file, e := ioutil.ReadFile("./config.xxx")
+	if e != nil {
+		fmt.Printf("File error: %v\n", e)
+		os.Exit(1)
+	}
+         return file
+}
+
+type Router struct {
+	Smtp_router Srouter `xml:"smtp_router"`
+}
+
+type Srouter struct {
+	From_router []Kv `xml:"from"`
+	Dns_router []Kv `xml:"dns"`
+}
+
+type Kv struct {
+	Key string `xml:"key"`
+	Value string `xml:"value"`
+
+
+
+}
+
+var r *Router
+
+
+
 // Handler function called upon successful receipt of an email.
-type Handler func(remoteAddr net.Addr, from string, to []string, data []byte)
+type Handler func(remoteAddr net.Addr, from string, to []string, data []byte,mclist *Router)
 
 // ListenAndServe listens on the TCP network address addr
 // and then calls Serve with handler to handle requests
@@ -53,6 +85,13 @@ func (srv *Server) ListenAndServe() error {
 	if err != nil {
 		return err
 	}
+	fmt.Println("SMTP GATEWAY 0.88.16")
+	ydata := configXmlReader()
+	err = xml.Unmarshal(ydata, &r)
+	if err != nil {
+
+	}
+
 	return srv.Serve(ln)
 }
 
@@ -102,6 +141,8 @@ func (s *session) serve() {
 	var from string
 	var to []string
 	var buffer bytes.Buffer
+
+
 
 	// Get remote end info for the Received header.
 	s.remoteIP, _, _ = net.SplitHostPort(s.conn.RemoteAddr().String())
@@ -185,7 +226,7 @@ loop:
 
 			// Pass mail on to handler.
 			if s.srv.Handler != nil {
-				go s.srv.Handler(s.conn.RemoteAddr(), from, to, buffer.Bytes())
+				go s.srv.Handler(s.conn.RemoteAddr(), from, to, buffer.Bytes(),r)
 			}
 
 			// Reset for next mail.
